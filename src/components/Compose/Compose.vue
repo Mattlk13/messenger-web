@@ -45,7 +45,7 @@ export default {
             let to = "";
 
             if (this.selectedContacts.length <= 0)
-                return Util.Snackbar(i18n.t('compose.norecipient'));
+                return Util.snackbar(i18n.t('compose.norecipient'));
 
             this.selectedContacts.map((value) => { // Concat selected contacts
                 to += value.phone + ",";
@@ -66,7 +66,7 @@ export default {
             }
 
             setTimeout(() => {
-                this.$router.push('/');
+                this.$router.push('/').catch(() => {});
             }, 1500);
         },
     }

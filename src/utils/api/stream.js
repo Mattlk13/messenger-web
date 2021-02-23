@@ -1,8 +1,8 @@
-import router from '@/router/';
 import ReconnectingWebsocket from 'reconnecting-websocket';
-import store from '@/store/';
 import joypixels from 'emoji-toolkit';
-import { Api, Util, Url, Crypto, SessionCache, Platform, i18n } from '@/utils/';
+import router from '@/router/';
+import store from '@/store/';
+import { Api, Util, Url, Crypto, Notifications, SessionCache, Platform, i18n } from '@/utils';
 
 export default class Stream {
     constructor() {
@@ -20,6 +20,9 @@ export default class Stream {
         this.socket = new ReconnectingWebsocket(Url.get('websocket') + Url.getAccountParam());
 
         this.socket.addEventListener('open', () => {
+            // Close connection on logout
+            store.state.msgbus.$on('logout-btn', () => this.close());
+
             if (this.has_disconnected) {
                 store.state.msgbus.$emit('refresh-btn');
                 Util.snackbar(i18n.t('api.back'));
@@ -108,14 +111,30 @@ export default class Stream {
         } else if (operation == "removed_message") {
             let message = json.message.content;
 
+            SessionCache.deleteMessage(message.id);
+
             store.state.msgbus.$emit('deletedMessage', message.id);
         } else if (operation == "read_conversation") {
             const id = json.message.content.id;
 
-            SessionCache.readConversation('index_public_unarchived');
-            SessionCache.readConversation('index_archived');
+            SessionCache.readConversation(id, 'index_public_unarchived');
+            SessionCache.readConversation(id, 'index_archived');
 
             store.state.msgbus.$emit('conversationRead', id);
+        } else if (operation == "updated_conversation") {
+            const conversation = Crypto.decryptConversation(json.message.content);
+            conversation.conversation_id = conversation.id; // Normalize ID
+
+            if (conversation.snippet) {
+                SessionCache.updateConversationSnippet(conversation.id, conversation.snippet, 'index_public_unarchived');
+                SessionCache.updateConversationSnippet(conversation.id, conversation.snippet, 'index_archived');
+                SessionCache.updateConversationSnippet(conversation.id, conversation.snippet, 'index_private');
+            }
+
+            SessionCache.readConversation(conversation.id, 'index_public_unarchived', conversation.read);
+            SessionCache.readConversation(conversation.id, 'index_archived', conversation.read);
+
+            store.state.msgbus.$emit('newMessage', conversation);
         } else if (operation == "update_message_type") {
             const id = json.message.content.id;
             const message_type = json.message.content.message_type;
@@ -154,7 +173,7 @@ export default class Stream {
      * @param message  - message object
      */
     notify(message) {
-        if (Notification.permission != "granted" && !store.state.notifications)
+        if (Notifications.needsPermission() && !store.state.notifications)
             return;
 
         if (message.type != 0)
@@ -176,14 +195,14 @@ export default class Stream {
 
             const link = "/thread/" + message.conversation_id;
 
-            const notification = new Notification(title, {
-                icon: '/static/images/android-desktop.png',
+            const notification = Notifications.notify(title, {
+                icon: require('@/../public/images/android-desktop.png'),
                 body: snippet
             });
 
             notification.onclick = () => {
                 window.focus();
-                router.push(link);
+                router.push(link).catch(() => {});
             };
         });
     }

@@ -1,6 +1,6 @@
 import { Api } from '@/utils';
 import store from '@/store';
-import Worker from "worker-loader?name=decrypt.worker.js!./worker/decrypter";
+import Worker from "worker-loader?name=decrypter.worker.js!./workers/decrypter.worker.js";
 
 // IndexedDB
 const indexedDB = window.indexedDB || window.webkitIndexedDB || window.mozIndexedDB
@@ -115,16 +115,15 @@ export default class MediaLoader {
 
                     // TODO: Now that we are loading things off on the worker thread, can this restriction be removed?
                     if (data.data.length > 10000000) {
-                        reject(null);
-                        return;
+                        return reject(null);
                     }
 
                     // get data out of json response
                     const imageData = data.data;
 
                     // Reject empty response
-                    if (imageData == "" || imageData == null)
-                        reject(null);
+                    if (!imageData || imageData == null)
+                        return reject(null);
 
                     // We are offloading the decryption to a web worker, because it can be extremely intensive and lock up the UI
                     // https://github.com/klinker-apps/pulse-sms-web/issues/28
@@ -146,15 +145,13 @@ export default class MediaLoader {
                         }
                     }
 
-                    const worker = new Worker;
+                    const worker = new Worker();
                     worker.addEventListener("message", handleWorkerCompletion, false);
 
                     // Decrypt blob
                     worker.postMessage({
                         "imageData": imageData,
-                        "accountId": store.state.account_id,
-                        "hash": store.state.hash,
-                        "salt": store.state.salt
+                        "key": store.state.key,
                     });
                 });
         });

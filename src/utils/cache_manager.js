@@ -53,6 +53,10 @@ export default class SessionCache {
         return store.state.compose_contacts;
     }
 
+    static getTemplates () {
+        return store.state.templates;
+    }    
+
     static putConversations (conversations, index = 'index_public_unarchived') {
         if (index == "index_public_unread") {
             // We want to just always read these from the backend, when the user goes to this section of the app.
@@ -60,20 +64,30 @@ export default class SessionCache {
         }
 
         let sessionConversations = SessionCache.getAllConversations();
-        sessionConversations[index] = conversations;
+        // Deepy copy conversation to avoid weird side effects
+        sessionConversations[index] = JSON.parse(JSON.stringify(conversations));
 
         store.commit('session_conversations', sessionConversations);
     }
 
     static putMessages (messages, conversation_id) {
         let sessionMessages = SessionCache.getAllMessages();
-        sessionMessages[conversation_id] = messages;
+        sessionMessages[conversation_id] = JSON.parse(JSON.stringify(messages));
 
         store.commit('session_messages', sessionMessages);
     }
 
     static putContacts (contacts) {
-        store.commit('compose_contacts', contacts);
+        try {
+            store.commit('compose_contacts', contacts);
+        } catch (err) {
+            // Too many contacts:
+            // https://app.bugsnag.com/pulsesms/pulse-sms-web/errors/5e656685fbc7df001873d3a4?event_id=5e656685005836c0067a0000&i=sk&m=nw
+        }
+    }
+
+    static putTemplates (templates) {
+        store.commit('templates', templates);
     }
 
     static hasConversations (index = 'index_public_unarchived') {
@@ -95,12 +109,20 @@ export default class SessionCache {
         return SessionCache.getContacts().length > 0;
     }
 
+    static hasTemplates() {
+        return (SessionCache.getTemplates()||{}).length > 0;
+    }
+
     static invalidateConversations (index = 'index_public_unarchived') {
         SessionCache.putConversations(null, index);
     }
 
     static invalidateMessages (conversation_id) {
         SessionCache.putMessages(null, conversation_id);
+    }
+
+    static invalidateTemplates() {
+        SessionCache.putTemplates(null);
     }
 
     static invalidateAllConversations() {
@@ -131,7 +153,7 @@ export default class SessionCache {
         SessionCache.putConversations(conversations, index);
     }
 
-    static readConversation (conversation_id, index = 'index_public_unarchived') {
+    static readConversation (conversation_id, index = 'index_public_unarchived', read = true) {
         if (!SessionCache.hasConversations(index)) {
             return;
         }
@@ -139,7 +161,39 @@ export default class SessionCache {
         let conversations = SessionCache.getConversations(index);
         for (let i = 0; i < conversations.length; i++) {
             if (conversations[i].device_id == conversation_id) {
-                conversations[i].read = true;
+                conversations[i].read = read;
+                break;
+            }
+        }
+
+        SessionCache.putConversations(conversations, index);
+    }
+
+    static updateConversationSnippet (conversation_id, snippet, index = 'index_public_unarchived') {
+        if (!SessionCache.hasConversations(index)) {
+            return;
+        }
+
+        let conversations = SessionCache.getConversations(index);
+        for (let i = 0; i < conversations.length; i++) {
+            if (conversations[i].device_id == conversation_id) {
+                conversations[i].snippet = snippet;
+                break;
+            }
+        }
+
+        SessionCache.putConversations(conversations, index);
+    }
+
+    static updateConversationTitle (conversation_id, title, index = 'index_public_unarchived') {
+        if (!SessionCache.hasConversations(index)) {
+            return;
+        }
+
+        let conversations = SessionCache.getConversations(index);
+        for (let i = 0; i < conversations.length; i++) {
+            if (conversations[i].device_id == conversation_id) {
+                conversations[i].title = title;
                 break;
             }
         }
@@ -156,6 +210,26 @@ export default class SessionCache {
         messages.unshift(message);
 
         SessionCache.putMessages(messages, message.conversation_id);
+    }
+
+    static deleteMessage (message_id) {
+        let messages = SessionCache.getAllMessages();
+        if (messages == null) {
+            return;
+        }
+
+        for (var conversation_id in messages) {
+            if (messages.hasOwnProperty(conversation_id)) {
+                for (let i = 0; i < messages[conversation_id].length; i++) {
+                    if (messages[conversation_id][i].device_id == message_id) {
+                        messages[conversation_id].splice(i, 1);
+                        break;
+                    }
+                }
+            }
+        }
+
+        store.commit('session_messages', messages);
     }
 
     static updateMessageType (message_id, new_type) {
@@ -183,6 +257,7 @@ export default class SessionCache {
         if (conversations != null) {
             for (let i = 0; i < conversations.length; i++) {
                 if (conversations[i].device_id == message.conversation_id) {
+                    conversations[i].read = message.read;
                     conversations[i].timestamp = message.timestamp;
                     conversations[i].snippet = message.mime_type.indexOf("text") > -1 ? message.data : "";
                     this.putConversations(this.resortConversations(conversations), 'index_public_unarchived');
@@ -195,6 +270,7 @@ export default class SessionCache {
         if (conversations != null) {
             for (let i = 0; i < conversations.length; i++) {
                 if (conversations[i].device_id == message.conversation_id) {
+                    conversations[i].read = message.read;
                     conversations[i].timestamp = message.timestamp;
                     conversations[i].snippet = message.mime_type.indexOf("text") > -1 ? message.data : "";
                     this.putConversations(this.resortConversations(conversations), 'index_archived');
@@ -207,6 +283,7 @@ export default class SessionCache {
         if (conversations != null) {
             for (let i = 0; i < conversations.length; i++) {
                 if (conversations[i].device_id == message.conversation_id) {
+                    conversations[i].read = message.read;
                     conversations[i].timestamp = message.timestamp;
                     conversations[i].snippet = message.mime_type.indexOf("text") > -1 ? message.data : "";
                     this.putConversations(this.resortConversations(conversations), 'index_private');

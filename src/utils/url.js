@@ -31,17 +31,22 @@ export default class Url {
         "create_scheduled":     "scheduled_messages/add/",
         "account_stats":        "accounts/count",
         "drafts":               "drafts",
-        "remove_draft":         "drafts/remove/",
+        "drafts_conversation":  "drafts/",
+        "create_drafts":        "drafts/add/",
+        "remove_drafts":        "drafts/remove/",
+        "replace_drafts":       "drafts/replace/",
         "devices":              "devices",
         "remove_device":        "devices/remove/",
         "templates":            "templates",
+        "create_template":      "templates/add/",
+        "update_template":      "templates/update/",
         "remove_template":      "templates/remove/",
         "auto_replies":         "auto_replies",
         "remove_auto_reply":    "auto_replies/remove/",
     }
 
     static getBaseUrl () {
-        return "api.messenger.klinkerapps.com/";
+        return "api.pulsesms.app/";
     }
 
     static getApiVersion () {

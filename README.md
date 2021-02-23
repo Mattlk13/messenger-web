@@ -22,7 +22,7 @@ Getting up and running is very easy. You will need `npm` installed:
 npm install
 
 // start the server at localhost:8081
-npm serve
+npm run serve
 ```
 
 The `npm serve` command will serve a local version of the app. The local version of the web app will still use the same backend endpoints as the hosted version, so no additional configuration is required.
@@ -36,6 +36,16 @@ npm run build
 # build for production and view the bundle analyzer report
 npm run build --report
 ```
+
+## Deploying to Production
+
+The app is hosted right here, through GitHub Pages. For anyone with push access to the repo, you can run: 
+
+```bash
+npm run deploy
+```
+
+This will build and upload the production-ready version of the app, to GitHub pages. It will be live within ~1 minute.
 
 ## Contributing
 

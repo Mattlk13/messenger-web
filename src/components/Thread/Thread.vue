@@ -1,5 +1,5 @@
 <template>
-    <div id="thread-wrap" @click="markAsRead">
+    <div id="thread-wrap">
         <div id="message-list" class="page-content" :style="{marginBottom: margin_bottom + 'px'}">
             <!-- Load More Button -->
             <button v-if="messages.length > 69" class="mdl-button mdl-js-button mdl-button--raised mdl-js-ripple-effect" @click="handleShowMore">
@@ -22,6 +22,7 @@
 <script>
 import Vue from 'vue';
 import jump from 'jump.js';
+import debounce from 'lodash/debounce';
 
 import { Util, Api, SessionCache, TimeUtils } from '@/utils';
 
@@ -58,6 +59,9 @@ export default {
             sendbar: null,
 
             offset: 0,
+
+            messageText: "",
+            has_draft: false,
         };
     },
 
@@ -68,11 +72,14 @@ export default {
         },
 
         color () {
-            if (this.$store.state.theme_use_global) {
-                return this.$store.state.theme_global_default;
-            } else {
+            // If conversation_data is real and global theme is disabled
+            if (!this.$store.state.theme_use_global && this.conversation_data) {
                 return this.conversation_data.colors.default;
+            } else { // Fallback to global
+                return this.$store.state.theme_global_default;
             }
+            // This handles three things - global theme option, conversation color
+            // And the situation where conversation color is in use but undefined
         },
 
         isArchived () {
@@ -82,11 +89,18 @@ export default {
 
     watch: {
         '$route' () { // Update thread on route change
+
+            this.cleanupDrafts();
+
+            this.messageText = "";
+            this.has_draft = false;
+            this.$store.state.msgbus.$emit('clear-sendbar');
+
             this.conversation_id = this.threadId;
             this.read = this.isRead;
 
             this.loadThread();
-
+            this.loadDrafts();
         },
     },
 
@@ -99,6 +113,7 @@ export default {
         this.$store.state.msgbus.$on('newMessage', this.addNewMessage);
         this.$store.state.msgbus.$on('deletedMessage', this.deletedMessage);
         this.$store.state.msgbus.$on('refresh-btn', this.refresh);
+        this.$store.state.msgbus.$on('message-text-updated', this.messageTextUpdated);
 
         this.$store.state.msgbus.$on('archive-btn', this.archive);
         this.$store.state.msgbus.$on('unarchive-btn', this.archive);
@@ -111,6 +126,7 @@ export default {
 
         this.$store.state.msgbus.$on('hotkey-page-previous', this.pageToPrevious);
         this.$store.state.msgbus.$on('hotkey-page-next', this.pageToNext);
+        this.$store.state.msgbus.$on('hotkey-archive-and-advance', this.archiveAdvance);
 
         // Fetch dom
         this.html = document.querySelector("html");
@@ -131,7 +147,10 @@ export default {
             e.stopPropagation();
             return false;
         });
+        this.listeners.extend(events);
 
+        // Mark as read when action is taken on page (just focus is not enough)
+        events = Util.addEventListeners(['keydown', 'click'], debounce(this.markAsRead, 250));
         this.listeners.extend(events);
 
         // Snackbar Clean up
@@ -198,22 +217,33 @@ export default {
             () => setTimeout(() => { // Wait 500ms for text render and resize
 
                 // Set margin bottom
-                this.margin_bottom = this.$refs.sendbar.$el.clientHeight;
+                this.margin_bottom = this.$refs.sendbar && this.$refs.sendbar.$el.clientHeight;
 
             }, 500),
             { deep: true, immediate: true }
         );
 
+        this.$watch(
+            '$refs.sendbar.show_templates',
+            () => Vue.nextTick(() => {
+                this.margin_bottom = this.$refs.sendbar && this.$refs.sendbar.$el.clientHeight;
+            }),
+            { immediate: true }
+        );
+
         // Load thread
         this.loadThread();
-
+        this.loadDrafts();
     },
 
     beforeDestroy () {
 
+        this.cleanupDrafts();
+
         this.$store.state.msgbus.$off('newMessage', this.addNewMessage);
         this.$store.state.msgbus.$off('deletedMessage', this.deletedMessage);
         this.$store.state.msgbus.$off('refresh-btn', this.refresh);
+        this.$store.state.msgbus.$off('message-text-updated', this.messageTextUpdated);
 
         this.$store.state.msgbus.$off('archive-btn', this.archive);
         this.$store.state.msgbus.$off('unarchive-btn', this.archive);
@@ -226,6 +256,7 @@ export default {
 
         this.$store.state.msgbus.$off('hotkey-page-previous', this.pageToPrevious);
         this.$store.state.msgbus.$off('hotkey-page-next', this.pageToNext);
+        this.$store.state.msgbus.$off('hotkey-archive-and-advance', this.archiveAdvance);
 
         // Restore last title
         this.$store.commit('title', this.previous_title);
@@ -261,11 +292,23 @@ export default {
             }
 
             // If message is empty, we're done
-            if (message.length <= 0)
+            if (message.length <= 0) {
                 return false;
+            }
 
             // Otherwise send any corrisponding message
             Api.messages.send(message, "text/plain", conversationId);
+            
+            // this is an "experiments" setting
+            if (!this.isArchived && this.$store.state.archive_after_send) {
+                Api.conversations.archive(conversationId, true);
+                this.pageToNext();
+            }
+
+            // Delete drafts if any exist
+            if (this.has_draft) {
+                this.deleteDrafts();
+            }
         },
 
         /**
@@ -273,6 +316,16 @@ export default {
          * Set's up thread, gets colors. initiate message fetch
          */
         loadThread () {
+
+            // Check conversation_data for bad data yield. This occurs
+            // when the session cache is invalid or when a conversation doesn't
+            // exist. we handle this by checking if the appropriate variables
+            // are truthy. We can fix this by invaldiating the cache and then pushing to `/`
+            if (!this.conversation_data) {
+                SessionCache.invalidateAllConversations();
+                SessionCache.invalidateMessages(this.conversation_id + '');
+                this.$router.push("/");
+            }
 
             // Fetch messages
             this.offset = 0;
@@ -295,15 +348,20 @@ export default {
             if (this.$store.state.loaded_media)
                 this.$store.commit('loaded_media', null);
 
+            // NOTE: `from` may be undefined due to conversation_data not yielding
+            // data. This occurs when the session cache is invalid or when a
+            // conversation doesn't exist. we handle this by checking if the
+            // appropriate variables are truthy
+
             // Get contact colors from cache
-            const from = this.conversation_data
+            const from = this.conversation_data && this.conversation_data
                 .phone_number.split(", "); // Split numbers
 
-            if (from.length == 1)  // If only one, use default color
+            if (from && from.length == 1)  // If only one, use default color
                 this.colors_from[this.conversation_data.name]  // Save color by name
                         = this.conversation_data.colors.default;
 
-            else // Otherwise, get from cache
+            else if (from) // Otherwise, get from cache
                 from.map(
                     (i) => { // For each name
                         const id = Util.createIdMatcher(i);
@@ -316,6 +374,37 @@ export default {
                     }
                 );
 
+        },
+
+        /**
+         * Fetch drafts from api and loads them into local thread memory
+         */
+        loadDrafts () {
+            Api.drafts.getConversationDrafts(this.conversation_id)
+                .then(response => {
+                    if (response.length > 0) {
+                        for (const draft of response) {
+                            if (draft.mime_type == "text/plain") {
+                                this.$store.state.msgbus.$emit('apply-draft', draft.data);
+                                this.has_draft = true;
+                                break;
+                            }
+                        }
+                    }
+                });
+        },
+
+        /**
+         * Save or delete draft on thread change/destroy
+         * Check if text exists then save or delete draft
+         * no return - has effects
+         */
+        cleanupDrafts () {
+            if (this.messageText.trim() && !this.$store.state.archive_after_send) {
+                this.saveDraft(this.messageText);
+            } else if (this.has_draft) {
+                this.deleteDrafts();
+            }
         },
 
         /**
@@ -393,9 +482,11 @@ export default {
 
                         this.previous_title = this.$store.state.title;
 
-                        // Commit title and colors
-                        this.$store.commit('title', this.conversation_data.name);
-                        this.$store.commit('colors', this.conversation_data.colors);
+                        if (this.conversation_data) { // If valid thread
+                            // Commit title and colors
+                            this.$store.commit('title', this.conversation_data.name);
+                            this.$store.commit('colors', this.conversation_data.colors);
+                        }
                     });
                 });
         },
@@ -481,7 +572,6 @@ export default {
             for (let i = 0; i < this.messages.length; i++) {
                 if (this.messages[i].device_id == id) {
                     this.messages.splice(i, 1);
-                    SessionCache.invalidateMessages(this.conversation_id);
                 }
             }
         },
@@ -633,6 +723,13 @@ export default {
             });
         },
 
+        archiveAdvance () {
+            const conversationId = this.conversation_id;
+            Api.conversations.archive(conversationId, true);
+
+            this.pageToNext();
+        },
+
         pageToNext () {
             let conversations = SessionCache.getConversations();
             let index = -1;
@@ -673,15 +770,7 @@ export default {
          */
         text_color (message) {
             try {
-                let colorString;
-                if (message.message_from)
-                    colorString = this.getColor(message);
-                else // Otherwise default color
-                    colorString = this.color;
-
-                if (!colorString)
-                    colorString = this.color;
-
+                const colorString = this.getColor(message);
                 return Util.getTextColorBasedOnBackground(colorString);
             } catch (err) {
                 return "#FFF";
@@ -741,7 +830,23 @@ export default {
 
         handleShowMore() {
             this.fetchMessages(this.offset);
-        }
+        },
+
+        messageTextUpdated (newText) {
+            this.messageText = newText;
+        },
+
+        saveDraft (text) {
+            if(!this.has_draft) {
+                Api.drafts.create(this.conversation_id, text);
+            } else {
+                Api.drafts.replace(this.conversation_id, text);
+            }
+        },
+
+        deleteDrafts () {
+            Api.drafts.delete(this.conversation_id);
+        },
     }
 };
 </script>

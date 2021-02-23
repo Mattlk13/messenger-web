@@ -1,73 +1,83 @@
 {
   "name": "pulse-sms-web",
-  "version": "v1.1.2",
+  "version": "v1.3.6",
   "description": "Pulse SMS - text from your computer.",
-  "license": "(Apache-2.0 AND MIT)",
   "author": {
     "name": "Luke Klinker",
-    "email": "luke@klinkerapps.com",
-    "url": "https://luke.klinker.xyz"
+    "email": "pulsesmsapp@gmail.com",
+    "url": "https://klinkerapps.com"
   },
-  "repository": "https://github.com/klinker-apps/pulse-sms-web",
   "scripts": {
     "serve": "vue-cli-service serve",
     "build": "vue-cli-service build",
-    "lint": "vue-cli-service lint",
     "test:unit": "vue-cli-service test:unit",
+    "lint": "vue-cli-service lint",
     "deploy": "npm run build; touch dist/CNAME; echo \"pulsesms.app\" > dist/CNAME; push-dir --dir=dist --branch=gh-pages --cleanup"
   },
   "dependencies": {
+    "@bugsnag/js": "^7.5.4",
+    "@bugsnag/plugin-vue": "^7.5.4",
     "@xkeshi/image-compressor": "^0.5.3",
-    "core-js": "^2.6.5",
-    "emoji-mart-vue-fast": "^6.1.2",
-    "emoji-toolkit": "^5.0.5",
+    "axios": "^0.21.1",
+    "emoji-mart-vue-fast": "^7.0.7",
+    "emoji-toolkit": "^6.0.1",
     "firebase": "^5.10.1",
     "hotkeys-js": "^3.6.3",
     "jump.js": "^1.0.2",
-    "linkifyjs": "^2.1.8",
-    "object-hash": "^1.3.1",
-    "reconnecting-websocket": "^3.2.2",
-    "vue": "^2.6.10",
-    "vue-color": "^2.7.0",
-    "vue-flatpickr-component": "^7.0.6",
-    "vue-h-ajax": "^0.1.3",
-    "vue-i18n": "^8.11.1",
-    "vue-router": "^3.1.3",
+    "linkifyjs": "^2.1.9",
+    "lodash": "^4.17.15",
+    "object-hash": "^2.1.1",
+    "reconnecting-websocket": "^4.4.0",
+    "vue": "^2.6.12",
+    "vue-color": "^2.8.1",
+    "vue-flatpickr-component": "^9.0.3",
+    "vue-i18n": "^8.22.3",
+    "vue-router": "^3.4.9",
     "vue-search-select": "^2.9.3",
-    "vuejs-dialog": "^1.4.0",
-    "vuex": "^2.3.1"
+    "vuejs-dialog": "^1.4.2",
+    "vuex": "^3.6.0"
   },
   "devDependencies": {
-    "@vue/cli-plugin-babel": "^3.11.0",
-    "@vue/cli-plugin-eslint": "^3.11.0",
-    "@vue/cli-plugin-unit-jest": "^4.1.2",
-    "@vue/cli-service": "^4.1.2",
+    "@babel/eslint-parser": "^7.12.1",
+    "@vue/cli-plugin-babel": "~4.5.10",
+    "@vue/cli-plugin-eslint": "~4.5.0",
+    "@vue/cli-plugin-unit-jest": "~4.5.10",
+    "@vue/cli-service": "~4.5.10",
+    "@vue/eslint-config-standard": "^5.1.2",
     "@vue/test-utils": "1.0.0-beta.29",
     "babel-core": "7.0.0-bridge.0",
-    "babel-eslint": "^10.0.1",
+    "babel-eslint": "^10.1.0",
     "babel-jest": "^25.0.0",
-    "eslint": "^5.16.0",
-    "eslint-plugin-vue": "^5.0.0",
+    "babel-plugin-module-resolver": "^4.1.0",
+    "eslint": "^6.7.2",
+    "eslint-config-airbnb-base": "^14.2.1",
+    "eslint-plugin-import": "^2.22.1",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-promise": "^4.2.1",
+    "eslint-plugin-standard": "^5.0.0",
+    "eslint-plugin-vue": "^6.2.2",
     "grpc": "^1.23.3",
     "lint-staged": "^8.1.5",
-    "node-sass": "^4.9.0",
+    "node-sass": "^5.0.0",
     "push-dir": "^0.4.1",
-    "sass-loader": "^7.1.0",
+    "sass-loader": "^10.1.0",
     "sw-precache-webpack-plugin": "^0.11.5",
     "vue-template-compiler": "^2.6.10",
     "worker-loader": "^2.0.0"
   },
+  "engines": {
+    "node": ">=10.0.0",
+    "npm": ">=6.0.0"
+  },
   "gitHooks": {
     "pre-commit": "lint-staged"
   },
+  "license": "(Apache-2.0 AND MIT)",
   "lint-staged": {
     "*.{js,vue}": [
       "vue-cli-service lint",
       "git add"
     ]
   },
-  "engines": {
-    "node": ">=10.0.0",
-    "npm": ">=6.0.0"
-  }
+  "repository": "https://github.com/klinker-apps/pulse-sms-web"
 }
